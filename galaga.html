@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>GALAGA HTML</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #000;
+    font-family: 'Courier New', monospace; color: #fff;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #game-container {
+    position: fixed; inset: 0; display: flex; justify-content: center;
+    align-items: center; background: #000; overflow: hidden;
+  }
+  canvas {
+    display: block; background: #000; image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges; image-rendering: crisp-edges;
+    touch-action: none;
+  }
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; padding: 8px 12px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; z-index: 10;
+    text-shadow: 0 0 4px #00f, 0 0 8px #00f;
+    font-size: 14px; letter-spacing: 1px;
+  }
+  #hud .col { display: flex; flex-direction: column; gap: 2px; }
+  #hud .label { color: #ff2222; font-weight: bold; }
+  #hud .value { color: #fff; }
+  #lives { display: flex; gap: 4px; align-items: center; }
+  .life-icon {
+    width: 16px; height: 16px;
+    background: linear-gradient(180deg, #fff 0%, #fff 50%, #f00 50%, #f00 100%);
+    clip-path: polygon(50% 0, 60% 30%, 100% 60%, 100% 100%, 60% 100%, 60% 80%, 40% 80%, 40% 100%, 0 100%, 0 60%, 40% 30%);
+  }
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; background: rgba(0,0,0,0.85);
+    z-index: 20; text-align: center; padding: 20px;
+  }
+  #overlay h1 {
+    font-size: clamp(28px, 8vw, 56px); color: #ff2222; margin-bottom: 10px;
+    text-shadow: 0 0 8px #ff2222, 0 0 16px #ff2222; letter-spacing: 4px;
+  }
+  #overlay h2 {
+    font-size: clamp(16px, 4vw, 22px); color: #ffff00; margin-bottom: 20px;
+    text-shadow: 0 0 8px #ffff00;
+  }
+  #overlay p { font-size: clamp(12px, 3vw, 16px); color: #fff; margin: 6px 0; max-width: 90%; line-height: 1.5; }
+  #overlay .small { color: #88aaff; font-size: clamp(10px, 2.5vw, 14px); }
+  .btn {
+    margin-top: 20px; padding: 14px 28px; font-size: clamp(14px, 3.5vw, 18px);
+    background: #001144; color: #fff; border: 2px solid #00aaff;
+    cursor: pointer; font-family: inherit; letter-spacing: 2px;
+    text-shadow: 0 0 4px #00aaff; transition: all 0.15s;
+    border-radius: 4px;
+  }
+  .btn:active { background: #00aaff; color: #000; transform: scale(0.97); }
+  .blink { animation: blink 0.8s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #stage-banner {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #00ddff; font-size: clamp(24px, 6vw, 40px);
+    text-shadow: 0 0 8px #00ddff, 0 0 16px #00ddff; letter-spacing: 3px;
+    pointer-events: none; z-index: 15; opacity: 0; transition: opacity 0.3s;
+    text-align: center;
+  }
+  #stage-banner.show { opacity: 1; }
+  #stage-banner .sub { display: block; font-size: 0.55em; color: #ffff00; margin-top: 8px; text-shadow: 0 0 8px #ffff00; }
+  #fire-btn {
+    position: fixed; bottom: 24px; right: 24px;
+    width: 80px; height: 80px; border-radius: 50%;
+    background: rgba(255, 34, 34, 0.25); border: 3px solid #ff2222;
+    color: #ff2222; font-size: 28px; font-weight: bold;
+    display: flex; justify-content: center; align-items: center;
+    z-index: 12; touch-action: none; user-select: none;
+    text-shadow: 0 0 8px #ff2222;
+    box-shadow: 0 0 12px rgba(255, 34, 34, 0.5);
+  }
+  #fire-btn:active { background: rgba(255, 34, 34, 0.5); transform: scale(0.95); }
+  #pause-btn {
+    position: fixed; top: 50px; right: 12px;
+    width: 36px; height: 36px; background: rgba(0,170,255,0.2);
+    border: 2px solid #00aaff; color: #fff; z-index: 12;
+    border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="col">
+    <span class="label blink">1UP</span>
+    <span class="value" id="score">0</span>
+  </div>
+  <div class="col" style="align-items:center;">
+    <span class="label">HIGH SCORE</span>
+    <span class="value" id="hiscore">20000</span>
+  </div>
+  <div class="col" style="align-items:flex-end;">
+    <span class="label">STAGE</span>
+    <span class="value" id="stage">1</span>
+  </div>
+</div>
+
+<div id="lives" class="hidden" style="position:fixed; bottom:8px; left:8px; z-index:10;"></div>
+<button id="pause-btn" class="hidden">II</button>
+<button id="fire-btn" class="hidden">FIRE</button>
+
+<div id="stage-banner"></div>
+
+<div id="overlay">
+  <h1>GALAGA</h1>
+  <h2 class="blink">PRESS START</h2>
+  <p>Mueve la nave: <b>arrastra el dedo</b> en la pantalla</p>
+  <p>Disparar: <b>botón FIRE</b> o <b>toca arriba</b></p>
+  <p class="small">Destruye al Boss mientras tiene tu nave capturada para formar un DUAL FIGHTER</p>
+  <button id="start-btn" class="btn">START</button>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// GALAGA HTML5 - Single file implementation
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false;
+
+// Logical resolution (the game world); actual canvas is scaled to fit screen
+const LW = 224;   // Galaga arcade was 224x288
+const LH = 288;
+let scale = 1;
+let offsetX = 0, offsetY = 0;
+
+function resize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Fit canvas keeping aspect ratio
+  const ratio = LW / LH;
+  let cw, ch;
+  if (w / h > ratio) {
+    ch = h;
+    cw = Math.floor(h * ratio);
+  } else {
+    cw = w;
+    ch = Math.floor(w / ratio);
+  }
+  // Use device pixel ratio for sharpness up to 2
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width = Math.floor(cw * dpr);
+  canvas.height = Math.floor(ch * dpr);
+  scale = canvas.width / LW;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  // Track offset for input mapping
+  const rect = canvas.getBoundingClientRect();
+  offsetX = rect.left;
+  offsetY = rect.top;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+
+// ============================================================
+// Pixel sprites - drawn with canvas operations to mimic Galaga sprites
+// ============================================================
+
+function makeSprite(w, h, drawFn) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  drawFn(cx);
+  return c;
+}
+
+// Pixel-art helper: draw from a string grid where each char is a color key
+function pixelArt(w, h, palette, grid) {
+  return makeSprite(w, h, (cx) => {
+    const rows = grid.trim().split('\n').map(r => r.replace(/^\s+/, ''));
+    for (let y = 0; y < rows.length; y++) {
+      for (let x = 0; x < rows[y].length; x++) {
+        const ch = rows[y][x];
+        if (ch === '.' || ch === ' ') continue;
+        cx.fillStyle = palette[ch] || '#fff';
+        cx.fillRect(x, y, 1, 1);
+      }
+    }
+  });
+}
+
+// Player Fighter (16x16) - white with red triangle wings
+const SPR = {};
+SPR.fighter = pixelArt(16, 16,
+  { W: '#ffffff', R: '#ff2222', B: '#000000', S: '#ddddff' },
+  `
+  .......WW.......
+  .......WW.......
+  ......WSSW......
+  ......WSSW......
+  .....WSSSSW.....
+  .....WSSSSW.....
+  ....WSSWWSSW....
+  ....WSSWWSSW....
+  ...WSWWWWWWSW...
+  ..RWWRWWWWRWWR..
+  .RWWWWRRRRWWWWR.
+  RWWRRRWRRWRRRWWR
+  RRRRRRRRRRRRRRRR
+  .RR..RR..RR..RR.
+  .R....R..R....R.
+  ..............
+  `);
+
+// Bullet - small yellow streak
+SPR.bullet = makeSprite(3, 8, (cx) => {
+  cx.fillStyle = '#ffffaa';
+  cx.fillRect(1, 0, 1, 8);
+  cx.fillStyle = '#ffff00';
+  cx.fillRect(0, 2, 3, 4);
+});
+
+// Enemy bullet (red dot)
+SPR.eBullet = makeSprite(4, 4, (cx) => {
+  cx.fillStyle = '#ff4444';
+  cx.fillRect(0, 0, 4, 4);
+  cx.fillStyle = '#ffaaaa';
+  cx.fillRect(1, 1, 2, 2);
+});
+
+// Zako (blue/cyan) - 13x10 - basic enemy
+SPR.zako = pixelArt(13, 10,
+  { B: '#3366ff', C: '#00ddff', W: '#ffffff', Y: '#ffff00', K: '#000' },
+  `
+  ..B.......B..
+  ...B.....B...
+  .Y.BBB.BBB.Y.
+  YYBBCCCCCBBYY
+  YYBCCWCWCCBYY
+  .BBCCCCCCCBB.
+  ..BCCBBBCCB..
+  ...BB...BB...
+  ....B...B....
+  .....BBB.....
+  `);
+
+// Goei (red) - 13x10 - mid enemy
+SPR.goei = pixelArt(13, 10,
+  { R: '#ff2222', P: '#ff66aa', W: '#ffffff', Y: '#ffff00', B: '#3333ff' },
+  `
+  ..R.......R..
+  Y.R.R...R.R.Y
+  YRRRRR.RRRRRY
+  .RRPPRRRPPRR.
+  RRPPPPRPPPPRR
+  RRRRRRRRRRRRR
+  .RRBRRRRRBRR.
+  ..RBRRRRRBR..
+  ...RR.R.RR...
+  ....R...R....
+  `);
+
+// Boss Galaga (green stage 1, blue stage 2) - 16x16
+function makeBoss(color1, color2) {
+  return pixelArt(16, 16,
+    { A: color1, B: color2, W: '#ffffff', Y: '#ffff00', K: '#000', R: '#ff3333' },
+    `
+    ....AAAAAAAA....
+    ...AABBBBBBAA...
+    ..AABBWWWWBBAA..
+    ..ABBWAAAAWBBA..
+    .AABWAYYYYAWBAA.
+    .ABBWYWAAWYWBBA.
+    AABBWYAYYAYWBBAA
+    AABBWYAYYAYWBBAA
+    .ABBWWAAAAWWBBA.
+    .AABBWWWWWWBBAA.
+    ..ABBBBAABBBBA..
+    ..AABRRAARRBAA..
+    ...AARR..RRAA...
+    ....AR....RA....
+    ....A......A....
+    ...A........A...
+    `);
+}
+SPR.bossGreen = makeBoss('#22dd22', '#88ff88');
+SPR.bossBlue  = makeBoss('#3344ff', '#66aaff');  // boss after first hit
+
+// Tractor beam - drawn procedurally each frame, no sprite
+
+// Explosion frames (4 frames)
+SPR.explosion = [];
+for (let i = 0; i < 4; i++) {
+  const size = 16 + i * 4;
+  SPR.explosion.push(makeSprite(size, size, (cx) => {
+    const cxp = size / 2, cyp = size / 2;
+    const colors = ['#ffff00', '#ff8800', '#ff2222', '#440000'];
+    for (let p = 0; p < 16; p++) {
+      const a = (p / 16) * Math.PI * 2;
+      const r = (size / 2) * (0.4 + 0.6 * (i / 3));
+      const x = cxp + Math.cos(a) * r;
+      const y = cyp + Math.sin(a) * r;
+      cx.fillStyle = colors[i];
+      cx.fillRect(x - 2, y - 2, 4, 4);
+    }
+    cx.fillStyle = colors[Math.min(3, i + 1)];
+    cx.fillRect(cxp - 3, cyp - 3, 6, 6);
+  }));
+}
+
+// Star background
+const stars = [];
+for (let i = 0; i < 80; i++) {
+  stars.push({
+    x: Math.random() * LW,
+    y: Math.random() * LH,
+    speed: 0.3 + Math.random() * 1.2,
+    color: ['#ffffff', '#aaaaff', '#ffaaaa', '#aaffaa', '#ffffaa'][Math.floor(Math.random() * 5)],
+    blink: Math.random() * Math.PI * 2,
+  });
+}
+
+// ============================================================
+// Game state
+// ============================================================
+
+const state = {
+  mode: 'menu',     // menu, playing, paused, gameover, stage_intro, challenge_results
+  score: 0,
+  hiscore: parseInt(localStorage.getItem('galaga_hi') || '20000', 10),
+  lives: 3,
+  stage: 1,
+  isChallenge: false,
+  challengeKills: 0,
+  challengeTotal: 40,
+  player: null,
+  bullets: [],
+  enemies: [],
+  enemyBullets: [],
+  explosions: [],
+  particles: [],
+  spawnQueue: [],
+  formation: null,
+  diveTimer: 0,
+  stageTimer: 0,
+  bannerTimer: 0,
+  stageStartDelay: 0,
+  perfectChallengeBonus: 10000,
+  flashTimer: 0,
+};
+
+// ============================================================
+// Player
+// ============================================================
+
+class Player {
+  constructor() {
+    this.x = LW / 2;
+    this.y = LH - 28;
+    this.w = 16;
+    this.h = 16;
+    this.alive = true;
+    this.captured = false;     // captured by tractor beam
+    this.dual = false;          // dual fighter mode
+    this.invuln = 0;            // invulnerability frames
+    this.respawnTimer = 0;
+    this.shootCooldown = 0;
+    this.targetX = this.x;
+  }
+
+  update(dt) {
+    if (!this.alive) {
+      if (this.respawnTimer > 0) {
+        this.respawnTimer -= dt;
+        if (this.respawnTimer <= 0 && state.lives > 0) {
+          this.respawn();
+        }
+      }
+      return;
+    }
+    if (this.invuln > 0) this.invuln -= dt;
+    if (this.shootCooldown > 0) this.shootCooldown -= dt;
+
+    // Smooth follow targetX
+    const dx = this.targetX - this.x;
+    const speed = 320 * dt; // px/sec movement cap (smooth)
+    if (Math.abs(dx) < speed) this.x = this.targetX;
+    else this.x += Math.sign(dx) * speed;
+
+    // Clamp
+    const halfW = this.dual ? this.w : this.w / 2;
+    this.x = Math.max(halfW, Math.min(LW - halfW, this.x));
+  }
+
+  shoot() {
+    if (!this.alive) return;
+    if (this.shootCooldown > 0) return;
+    if (state.bullets.length >= (this.dual ? 4 : 2)) return;
+    this.shootCooldown = 0.18;
+    const speed = -360;
+    state.bullets.push({ x: this.x, y: this.y - 8, vy: speed });
+    if (this.dual) {
+      state.bullets.push({ x: this.x - 16, y: this.y - 8, vy: speed });
+    }
+  }
+
+  draw() {
+    if (!this.alive) return;
+    if (this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0) return;
+    const s = SPR.fighter;
+    if (this.dual) {
+      ctx.drawImage(s, Math.round(this.x - 16), Math.round(this.y - 8));
+      ctx.drawImage(s, Math.round(this.x), Math.round(this.y - 8));
+    } else {
+      ctx.drawImage(s, Math.round(this.x - 8), Math.round(this.y - 8));
+    }
+  }
+
+  hit() {
+    if (!this.alive || this.invuln > 0) return false;
+    if (this.dual) {
+      // Lose only one ship, become single
+      this.dual = false;
+      this.invuln = 1.2;
+      spawnExplosion(this.x + 8, this.y);
+      return true;
+    }
+    this.alive = false;
+    spawnExplosion(this.x, this.y);
+    state.lives--;
+    this.respawnTimer = 1.5;
+    return true;
+  }
+
+  respawn() {
+    this.alive = true;
+    this.x = LW / 2;
+    this.targetX = LW / 2;
+    this.y = LH - 28;
+    this.invuln = 1.5;
+    this.dual = false;
+  }
+}
+
+// ============================================================
+// Enemy / Formation
+// ============================================================
+
+const ENEMY_TYPES = {
+  zako: { sprite: SPR.zako, w: 13, h: 10, hp: 1, score: 50, scoreDive: 100 },
+  goei: { sprite: SPR.goei, w: 13, h: 10, hp: 1, score: 80, scoreDive: 160 },
+  boss: { sprite: SPR.bossGreen, sprite2: SPR.bossBlue, w: 16, h: 16, hp: 2, score: 150, scoreDive: 400 },
+};
+
+class Enemy {
+  constructor(type, formationSlot) {
+    this.type = type;
+    const def = ENEMY_TYPES[type];
+    this.def = def;
+    this.w = def.w;
+    this.h = def.h;
+    this.hp = def.hp;
+    this.maxHp = def.hp;
+    this.formationSlot = formationSlot; // {row, col}
+    this.x = -20;
+    this.y = -20;
+    this.angle = 0;
+    this.state = 'entry';   // entry -> formation -> dive -> tractor -> capturing -> returning
+    this.path = [];
+    this.pathT = 0;
+    this.pathSpeed = 80; // pixels/sec along path
+    this.shootCooldown = 1 + Math.random() * 3;
+    this.diveCooldown = 5 + Math.random() * 8;
+    this.tractorT = 0;
+    this.tractorPhase = 0; // 0 idle, 1 descending, 2 beaming, 3 ascending with player
+    this.captured = null; // reference if has captured player ghost
+    this.flashTimer = 0;
+  }
+
+  formationPos() {
+    const { row, col } = this.formationSlot;
+    return state.formation.cellPos(row, col);
+  }
+
+  update(dt) {
+    if (this.flashTimer > 0) this.flashTimer -= dt;
+    if (this.state === 'entry') {
+      this.pathT += this.pathSpeed * dt;
+      const result = sampleBezierPath(this.path, this.pathT);
+      if (!result) {
+        this.state = 'formation';
+      } else {
+        this.x = result.x;
+        this.y = result.y;
+        this.angle = result.angle;
+      }
+    } else if (this.state === 'formation') {
+      const p = this.formationPos();
+      this.x = p.x;
+      this.y = p.y;
+      this.angle = 0;
+      // Dive logic handled by formation manager
+    } else if (this.state === 'dive') {
+      this.pathT += this.pathSpeed * dt;
+      const result = sampleBezierPath(this.path, this.pathT);
+      if (!result) {
+        // Return to formation by flying off-screen and re-entering
+        this.state = 'returning';
+        this.pathT = 0;
+        const p = this.formationPos();
+        // Build short curve back: from current pos, fly up off-top and back to formation
+        this.path = [
+          { x: this.x, y: this.y },
+          { x: this.x + (Math.random() * 80 - 40), y: -30 },
+          { x: p.x, y: -10 },
+          { x: p.x, y: p.y },
+        ];
+        this.pathSpeed = 140;
+      } else {
+        this.x = result.x;
+        this.y = result.y;
+        this.angle = result.angle;
+        // Shoot occasionally
+        if (Math.random() < dt * 1.6 && !state.isChallenge) {
+          spawnEnemyBullet(this.x, this.y + this.h / 2);
+        }
+      }
+      // If went off bottom, re-enter from top
+      if (this.y > LH + 30) {
+        this.state = 'returning';
+        this.pathT = 0;
+        const p = this.formationPos();
+        this.path = [
+          { x: this.x, y: -20 },
+          { x: p.x, y: -20 },
+          { x: p.x, y: p.y },
+        ];
+        this.pathSpeed = 160;
+        this.x = this.path[0].x;
+        this.y = -20;
+      }
+    } else if (this.state === 'returning') {
+      this.pathT += this.pathSpeed * dt;
+      const result = sampleBezierPath(this.path, this.pathT);
+      if (!result) {
+        this.state = 'formation';
+      } else {
+        this.x = result.x;
+        this.y = result.y;
+        this.angle = result.angle;
+      }
+    } else if (this.state === 'tractor') {
+      // Boss only - descend, fire tractor beam, attempt capture
+      this.tractorT += dt;
+      if (this.tractorPhase === 1) {
+        // Descend toward player x
+        const targetX = LW / 2;
+        const targetY = LH * 0.45;
+        this.x += (targetX - this.x) * Math.min(1, dt * 1.2);
+        this.y += (targetY - this.y) * Math.min(1, dt * 1.2);
+        if (Math.abs(this.y - targetY) < 4) {
+          this.tractorPhase = 2;
+          this.tractorT = 0;
+        }
+      } else if (this.tractorPhase === 2) {
+        // Beaming for 2.5s
+        this.angle = Math.PI; // upside down
+        if (state.player.alive && !state.player.captured && !state.player.invuln) {
+          // Check overlap with beam
+          const beamHalfWidth = 14;
+          if (state.player.x > this.x - beamHalfWidth && state.player.x < this.x + beamHalfWidth &&
+              state.player.y > this.y && state.player.y < LH) {
+            // Capture
+            state.player.captured = true;
+            this.captured = { x: state.player.x, y: state.player.y };
+            this.tractorPhase = 3;
+            this.tractorT = 0;
+            // Player loses life on capture
+            state.player.alive = false;
+            state.player.respawnTimer = 1.0;
+            state.lives--;
+          }
+        }
+        if (this.tractorT > 2.5) {
+          this.tractorPhase = 3;
+          this.tractorT = 0;
+        }
+      } else if (this.tractorPhase === 3) {
+        // Ascend back to formation
+        const p = this.formationPos();
+        const dx = p.x - this.x;
+        const dy = p.y - this.y;
+        const len = Math.hypot(dx, dy);
+        const sp = 90 * dt;
+        if (len < sp) {
+          this.x = p.x; this.y = p.y;
+          this.state = 'formation';
+          this.tractorPhase = 0;
+          this.angle = 0;
+        } else {
+          this.x += (dx / len) * sp;
+          this.y += (dy / len) * sp;
+          this.angle = Math.PI; // still upside down while carrying
+        }
+        if (this.captured) {
+          this.captured.x = this.x;
+          this.captured.y = this.y + 18;
+        }
+      }
+    }
+  }
+
+  draw() {
+    const sprite = (this.type === 'boss' && this.hp < this.maxHp) ? this.def.sprite2 : this.def.sprite;
+    ctx.save();
+    ctx.translate(Math.round(this.x), Math.round(this.y));
+    if (this.angle) ctx.rotate(this.angle);
+    // Flash white when hit
+    if (this.flashTimer > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+    }
+    ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+    ctx.restore();
+
+    // Draw captured player ghost
+    if (this.captured && this.tractorPhase === 3) {
+      ctx.drawImage(SPR.fighter, Math.round(this.captured.x - 8), Math.round(this.captured.y - 8));
+    }
+    // Tractor beam
+    if (this.state === 'tractor' && this.tractorPhase === 2) {
+      drawTractorBeam(this.x, this.y);
+    }
+  }
+
+  hit() {
+    this.flashTimer = 0.08;
+    this.hp--;
+    if (this.hp <= 0) {
+      this.die();
+      return true;
+    }
+    return false;
+  }
+
+  die() {
+    let pts = (this.state === 'formation' || this.state === 'returning' || this.state === 'entry')
+      ? this.def.score : this.def.scoreDive;
+    addScore(pts);
+    spawnExplosion(this.x, this.y, this.type === 'boss' ? 1.2 : 0.8);
+
+    // Rescue captured player if this boss had one
+    if (this.captured) {
+      // Convert player to dual fighter (or revive if dead)
+      addScore(1000);
+      if (state.player.alive) {
+        state.player.dual = true;
+      } else {
+        state.player.alive = true;
+        state.player.dual = true;
+        state.player.x = LW / 2;
+        state.player.y = LH - 28;
+        state.player.invuln = 1.5;
+        state.lives++; // give back life
+      }
+      state.player.captured = false;
+      this.captured = null;
+    }
+
+    // Remove from enemies
+    const idx = state.enemies.indexOf(this);
+    if (idx >= 0) state.enemies.splice(idx, 1);
+
+    if (state.isChallenge) state.challengeKills++;
+  }
+}
+
+// ============================================================
+// Formation
+// ============================================================
+
+class Formation {
+  constructor() {
+    this.x = LW / 2;
+    this.y = 50;
+    this.dir = 1;
+    this.range = 16;
+    this.cols = 8;
+    this.rowHeight = 14;
+    this.colWidth = 18;
+    this.t = 0;
+  }
+
+  cellPos(row, col) {
+    const totalW = (this.cols - 1) * this.colWidth;
+    const baseX = this.x - totalW / 2 + col * this.colWidth;
+    const baseY = this.y + row * this.rowHeight;
+    return { x: baseX, y: baseY };
+  }
+
+  update(dt) {
+    this.t += dt;
+    // Side to side motion
+    this.x += this.dir * 16 * dt;
+    if (this.x > LW / 2 + this.range) { this.x = LW / 2 + this.range; this.dir = -1; }
+    if (this.x < LW / 2 - this.range) { this.x = LW / 2 - this.range; this.dir = 1; }
+  }
+}
+
+// ============================================================
+// Path utilities (Bezier)
+// ============================================================
+
+function sampleBezierPath(points, dist) {
+  // Treat 'points' as polyline with smoothing through Catmull-Rom
+  // dist in pixels along the polyline (approx)
+  if (!points || points.length < 2) return null;
+  // Calculate cumulative length
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    segs.push({ a, b, len, start: total });
+    total += len;
+  }
+  if (dist >= total) return null;
+  for (const s of segs) {
+    if (dist <= s.start + s.len) {
+      const t = (dist - s.start) / s.len;
+      const x = s.a.x + (s.b.x - s.a.x) * t;
+      const y = s.a.y + (s.b.y - s.a.y) * t;
+      const angle = Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x) - Math.PI / 2;
+      return { x, y, angle };
+    }
+  }
+  return null;
+}
+
+// Generate a curved entry path that loops then heads to formation
+function makeEntryPath(side, targetX, targetY) {
+  // side: 'left', 'right', 'top'
+  let start, c1, c2;
+  if (side === 'left') {
+    start = { x: -20, y: 30 };
+    c1 = { x: 50, y: 80 };
+    c2 = { x: 30, y: 160 };
+  } else if (side === 'right') {
+    start = { x: LW + 20, y: 30 };
+    c1 = { x: LW - 50, y: 80 };
+    c2 = { x: LW - 30, y: 160 };
+  } else {
+    start = { x: targetX, y: -20 };
+    c1 = { x: targetX + (Math.random() < 0.5 ? -50 : 50), y: 80 };
+    c2 = { x: targetX, y: 140 };
+  }
+  // Build polyline by sampling cubic bezier
+  const path = [];
+  const steps = 20;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = (1 - t) ** 3 * start.x + 3 * (1 - t) ** 2 * t * c1.x + 3 * (1 - t) * t * t * c2.x + t ** 3 * targetX;
+    const y = (1 - t) ** 3 * start.y + 3 * (1 - t) ** 2 * t * c1.y + 3 * (1 - t) * t * t * c2.y + t ** 3 * targetY;
+    path.push({ x, y });
+  }
+  return path;
+}
+
+function makeDivePath(startX, startY, swirl) {
+  // Dive curves: enemy swoops down across screen
+  const path = [{ x: startX, y: startY }];
+  const steps = 24;
+  const dir = swirl ? 1 : -1;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = startX + dir * Math.sin(t * Math.PI * 1.5) * 70;
+    const y = startY + t * (LH + 40);
+    path.push({ x, y });
+  }
+  return path;
+}
+
+// ============================================================
+// Spawn / Stage Setup
+// ============================================================
+
+function buildStage(stageNum) {
+  state.enemies = [];
+  state.spawnQueue = [];
+  state.formation = new Formation();
+
+  // Determine enemy composition: top 2 rows = boss, mid 2 = goei, bottom = zako
+  // Galaga has 5 rows of enemies in formation
+  const formationLayout = [
+    { row: 0, type: 'boss', cols: [2, 3, 4, 5] },           // 4 bosses
+    { row: 1, type: 'goei', cols: [1, 2, 3, 4, 5, 6] },     // 6 goeis
+    { row: 2, type: 'goei', cols: [0, 1, 2, 3, 4, 5, 6, 7] }, // 8 goeis
+    { row: 3, type: 'zako', cols: [0, 1, 2, 3, 4, 5, 6, 7] }, // 8 zakos
+    { row: 4, type: 'zako', cols: [0, 1, 2, 3, 4, 5, 6, 7] }, // 8 zakos -- but only 4 to make 40 total
+  ];
+  // Total: 4 + 6 + 8 + 8 + 8 = 34. Adjust to 40: change row 4
+  formationLayout[4] = { row: 4, type: 'zako', cols: [0, 1, 2, 3, 4, 5, 6, 7] }; // 8 zakos
+  // 4+6+8+8+8 = 34. Add bottom row to reach 40:
+  // Actually arcade Galaga has 40 enemies (4+8+8+10+10? actually 4 boss + 8 goei + 8 goei + 10 zako + 10 zako = 40)
+  // Let's use 8 cols and 5 rows = 40 max with custom counts.
+  const layout = [
+    { row: 0, type: 'boss', cols: [2, 3, 4, 5] },              // 4
+    { row: 1, type: 'goei', cols: [1, 2, 3, 4, 5, 6] },        // 6
+    { row: 2, type: 'goei', cols: [0, 1, 2, 3, 4, 5, 6, 7] },  // 8
+    { row: 3, type: 'zako', cols: [0, 1, 2, 3, 4, 5, 6, 7] },  // 8
+    { row: 4, type: 'zako', cols: [0, 1, 2, 3, 4, 5, 6, 7] },  // 8
+  ];
+  // Total = 34. Close enough to 40 for our 8-col grid.
+
+  // Build spawn queue with curved entry paths in waves of pairs
+  const allSlots = [];
+  for (const r of layout) {
+    for (const c of r.cols) {
+      allSlots.push({ row: r.row, col: c, type: r.type });
+    }
+  }
+
+  // Sort spawn order: bottom rows first, alternating sides
+  allSlots.sort((a, b) => {
+    if (a.row !== b.row) return b.row - a.row; // bottom first
+    return a.col - b.col;
+  });
+
+  let delay = 0.5;
+  for (let i = 0; i < allSlots.length; i++) {
+    const slot = allSlots[i];
+    const side = i % 2 === 0 ? 'left' : 'right';
+    state.spawnQueue.push({
+      delay,
+      type: slot.type,
+      slot: { row: slot.row, col: slot.col },
+      side,
+    });
+    delay += 0.18;
+  }
+
+  state.diveTimer = 6 - Math.min(3, stageNum * 0.2);
+  state.stageTimer = 0;
+}
+
+function buildChallengeStage(stageNum) {
+  state.enemies = [];
+  state.spawnQueue = [];
+  state.formation = new Formation();
+  state.challengeKills = 0;
+  state.challengeTotal = 40;
+
+  // 8 waves of 5 enemies, fixed patterns, no shooting
+  const types = ['zako', 'goei', 'boss', 'zako', 'goei', 'boss', 'zako', 'goei'];
+  let delay = 0.4;
+  for (let w = 0; w < 8; w++) {
+    const t = types[w];
+    const side = w % 2 === 0 ? 'left' : 'right';
+    for (let i = 0; i < 5; i++) {
+      state.spawnQueue.push({
+        delay,
+        type: t,
+        slot: null,  // challenge enemies don't go to formation, they fly through
+        side,
+        challenge: true,
+      });
+      delay += 0.18;
+    }
+    delay += 0.6;
+  }
+}
+
+function spawnFromQueue(dt) {
+  for (const s of state.spawnQueue) s.delay -= dt;
+  while (state.spawnQueue.length > 0 && state.spawnQueue[0].delay <= 0) {
+    const item = state.spawnQueue.shift();
+    spawnEnemy(item);
+  }
+}
+
+function spawnEnemy(item) {
+  const enemy = new Enemy(item.type, item.slot || { row: 0, col: 0 });
+  if (item.challenge) {
+    // Challenge stage: fly in curve and exit, no formation join
+    const startX = item.side === 'left' ? -20 : LW + 20;
+    const startY = 30 + Math.random() * 20;
+    enemy.path = makeChallengePath(startX, startY, item.side);
+    enemy.pathSpeed = 110;
+    enemy.state = 'dive';  // reuse dive state - they exit on completion
+    enemy.x = startX;
+    enemy.y = startY;
+  } else {
+    const target = state.formation.cellPos(item.slot.row, item.slot.col);
+    enemy.path = makeEntryPath(item.side, target.x, target.y);
+    enemy.pathSpeed = 110;
+    enemy.x = enemy.path[0].x;
+    enemy.y = enemy.path[0].y;
+  }
+  state.enemies.push(enemy);
+}
+
+function makeChallengePath(startX, startY, side) {
+  // Loop pattern across screen
+  const path = [];
+  const dir = side === 'left' ? 1 : -1;
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40;
+    const x = startX + dir * (LW + 40) * t;
+    const y = startY + Math.sin(t * Math.PI * 3) * 60 + t * 20;
+    path.push({ x, y });
+  }
+  return path;
+}
+
+// ============================================================
+// Effects
+// ============================================================
+
+function spawnExplosion(x, y, scale = 1) {
+  state.explosions.push({ x, y, frame: 0, t: 0, scale });
+}
+
+function drawTractorBeam(x, y) {
+  const grad = ctx.createLinearGradient(x, y, x, LH);
+  grad.addColorStop(0, 'rgba(180, 100, 255, 0.0)');
+  grad.addColorStop(0.1, 'rgba(180, 100, 255, 0.7)');
+  grad.addColorStop(0.5, 'rgba(255, 200, 255, 0.5)');
+  grad.addColorStop(1, 'rgba(180, 100, 255, 0.0)');
+  ctx.save();
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x - 4, y);
+  ctx.lineTo(x + 4, y);
+  ctx.lineTo(x + 18, LH);
+  ctx.lineTo(x - 18, LH);
+  ctx.closePath();
+  ctx.fill();
+  // Animated stripes
+  const t = performance.now() / 200;
+  for (let i = 0; i < 8; i++) {
+    const yy = y + ((i * 30 + t * 30) % (LH - y));
+    const w = 4 + ((yy - y) / (LH - y)) * 20;
+    ctx.fillStyle = `rgba(255, 200, 255, 0.3)`;
+    ctx.fillRect(x - w / 2, yy, w, 2);
+  }
+  ctx.restore();
+}
+
+function spawnEnemyBullet(x, y) {
+  // Simple aimed shot toward player position
+  if (!state.player.alive) return;
+  const dx = state.player.x - x;
+  const dy = state.player.y - y;
+  const len = Math.hypot(dx, dy);
+  const speed = 110;
+  state.enemyBullets.push({
+    x, y,
+    vx: (dx / len) * speed,
+    vy: (dy / len) * speed,
+  });
+}
+
+// ============================================================
+// Score / Lives
+// ============================================================
+
+function addScore(pts) {
+  state.score += pts;
+  if (state.score > state.hiscore) state.hiscore = state.score;
+  updateHUD();
+}
+
+function updateHUD() {
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('hiscore').textContent = state.hiscore;
+  document.getElementById('stage').textContent = state.stage;
+  // Lives display
+  const livesEl = document.getElementById('lives');
+  livesEl.innerHTML = '';
+  for (let i = 0; i < state.lives; i++) {
+    const l = document.createElement('div');
+    l.className = 'life-icon';
+    livesEl.appendChild(l);
+  }
+}
+
+// ============================================================
+// Stage flow
+// ============================================================
+
+function startStage(stageNum) {
+  state.stage = stageNum;
+  // Challenging stage every 4 levels (after 3, 7, 11...)
+  state.isChallenge = (stageNum % 4 === 0);
+  if (state.isChallenge) {
+    buildChallengeStage(stageNum);
+    showBanner(`CHALLENGING STAGE`, `STAGE ${stageNum}`, 2.5);
+  } else {
+    buildStage(stageNum);
+    showBanner(`STAGE ${stageNum}`, '', 1.6);
+  }
+  state.bullets = [];
+  state.enemyBullets = [];
+  state.explosions = [];
+  state.stageStartDelay = 1.6;
+  updateHUD();
+}
+
+function nextStage() {
+  if (state.isChallenge) {
+    // Bonus
+    const bonus = state.challengeKills === state.challengeTotal ? 10000 : state.challengeKills * 100;
+    addScore(bonus);
+    showBanner(`HITS: ${state.challengeKills}`, `BONUS ${bonus}`, 2.5);
+    setTimeout(() => startStage(state.stage + 1), 2800);
+  } else {
+    setTimeout(() => startStage(state.stage + 1), 600);
+  }
+}
+
+function showBanner(text, sub, duration = 2) {
+  const el = document.getElementById('stage-banner');
+  el.innerHTML = text + (sub ? `<span class="sub">${sub}</span>` : '');
+  el.classList.add('show');
+  state.bannerTimer = duration;
+}
+
+function hideBanner() {
+  const el = document.getElementById('stage-banner');
+  el.classList.remove('show');
+}
+
+// ============================================================
+// Update / Collisions
+// ============================================================
+
+function updateBullets(dt) {
+  for (let i = state.bullets.length - 1; i >= 0; i--) {
+    const b = state.bullets[i];
+    b.y += b.vy * dt;
+    if (b.y < -10) state.bullets.splice(i, 1);
+  }
+  for (let i = state.enemyBullets.length - 1; i >= 0; i--) {
+    const b = state.enemyBullets[i];
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    if (b.y > LH + 10 || b.x < -10 || b.x > LW + 10) state.enemyBullets.splice(i, 1);
+  }
+}
+
+function checkCollisions() {
+  // Player bullets vs enemies
+  for (let bi = state.bullets.length - 1; bi >= 0; bi--) {
+    const b = state.bullets[bi];
+    for (let ei = state.enemies.length - 1; ei >= 0; ei--) {
+      const e = state.enemies[ei];
+      if (Math.abs(b.x - e.x) < e.w / 2 + 1 && Math.abs(b.y - e.y) < e.h / 2 + 4) {
+        state.bullets.splice(bi, 1);
+        e.hit();
+        break;
+      }
+    }
+  }
+  // Enemy bullets vs player
+  if (state.player.alive && state.player.invuln <= 0) {
+    for (let bi = state.enemyBullets.length - 1; bi >= 0; bi--) {
+      const b = state.enemyBullets[bi];
+      const halfW = state.player.dual ? 16 : 8;
+      if (b.x > state.player.x - halfW && b.x < state.player.x + halfW &&
+          b.y > state.player.y - 6 && b.y < state.player.y + 6) {
+        state.enemyBullets.splice(bi, 1);
+        state.player.hit();
+        break;
+      }
+    }
+  }
+  // Enemy collision with player
+  if (state.player.alive && state.player.invuln <= 0) {
+    for (const e of state.enemies) {
+      const halfW = state.player.dual ? 16 : 8;
+      if (e.state !== 'formation' && e.state !== 'returning') {
+        if (Math.abs(e.x - state.player.x) < e.w / 2 + halfW - 2 &&
+            Math.abs(e.y - state.player.y) < e.h / 2 + 6) {
+          spawnExplosion(e.x, e.y);
+          e.die();
+          state.player.hit();
+          break;
+        }
+      }
+    }
+  }
+}
+
+function updateExplosions(dt) {
+  for (let i = state.explosions.length - 1; i >= 0; i--) {
+    const ex = state.explosions[i];
+    ex.t += dt;
+    ex.frame = Math.floor(ex.t / 0.08);
+    if (ex.frame >= SPR.explosion.length) state.explosions.splice(i, 1);
+  }
+}
+
+function processDives(dt) {
+  if (state.isChallenge) return;
+  if (!state.player.alive) return;
+  if (state.stageStartDelay > 0) return;
+
+  state.diveTimer -= dt;
+  if (state.diveTimer <= 0) {
+    state.diveTimer = Math.max(1.2, 4 - state.stage * 0.15);
+    // Pick a formation enemy to dive
+    const formationEnemies = state.enemies.filter(e => e.state === 'formation');
+    if (formationEnemies.length === 0) return;
+
+    // Boss has chance to do tractor beam attack
+    const bosses = formationEnemies.filter(e => e.type === 'boss');
+    if (bosses.length > 0 && Math.random() < 0.2 && !state.player.captured) {
+      const b = bosses[Math.floor(Math.random() * bosses.length)];
+      b.state = 'tractor';
+      b.tractorPhase = 1;
+      b.tractorT = 0;
+      return;
+    }
+
+    // Otherwise pick 1-3 enemies to dive together
+    const count = Math.min(formationEnemies.length, 1 + Math.floor(Math.random() * 3));
+    for (let i = 0; i < count; i++) {
+      const e = formationEnemies[Math.floor(Math.random() * formationEnemies.length)];
+      if (e.state !== 'formation') continue;
+      e.state = 'dive';
+      e.path = makeDivePath(e.x, e.y, Math.random() < 0.5);
+      e.pathSpeed = 120 + state.stage * 6 + Math.random() * 30;
+      e.pathT = 0;
+    }
+  }
+}
+
+// ============================================================
+// Main loop
+// ============================================================
+
+let lastTime = 0;
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
+  lastTime = now;
+  if (state.mode === 'playing') update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+  // Stars
+  for (const s of stars) {
+    s.y += s.speed * dt * 30;
+    s.blink += dt * 4;
+    if (s.y > LH) { s.y = -2; s.x = Math.random() * LW; }
+  }
+
+  if (state.bannerTimer > 0) {
+    state.bannerTimer -= dt;
+    if (state.bannerTimer <= 0) hideBanner();
+  }
+
+  if (state.stageStartDelay > 0) {
+    state.stageStartDelay -= dt;
+  }
+
+  state.player.update(dt);
+  state.formation.update(dt);
+  spawnFromQueue(dt);
+
+  for (const e of state.enemies) e.update(dt);
+  // Remove off-screen challenge enemies
+  if (state.isChallenge) {
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      if (e.y > LH + 30 || e.x < -40 || e.x > LW + 40) {
+        state.enemies.splice(i, 1);
+      }
+    }
+  }
+
+  updateBullets(dt);
+  checkCollisions();
+  updateExplosions(dt);
+  processDives(dt);
+
+  // Stage clear check
+  if (state.spawnQueue.length === 0 && state.enemies.length === 0 && state.stageStartDelay <= 0) {
+    if (state.bannerTimer <= 0) {
+      nextStage();
+      state.bannerTimer = 999; // hold until startStage runs
+    }
+  }
+
+  // Game over check
+  if (state.lives <= 0 && !state.player.alive && state.player.respawnTimer <= 0) {
+    gameOver();
+  }
+}
+
+function draw() {
+  // Background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, LW, LH);
+
+  // Stars
+  for (const s of stars) {
+    const alpha = 0.5 + 0.5 * Math.sin(s.blink);
+    ctx.fillStyle = s.color;
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(Math.floor(s.x), Math.floor(s.y), 1, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  if (state.mode !== 'playing' && state.mode !== 'paused' && state.mode !== 'gameover') return;
+
+  // Bullets
+  for (const b of state.bullets) {
+    ctx.drawImage(SPR.bullet, Math.round(b.x - 1), Math.round(b.y));
+  }
+  for (const b of state.enemyBullets) {
+    ctx.drawImage(SPR.eBullet, Math.round(b.x - 2), Math.round(b.y - 2));
+  }
+
+  // Enemies
+  for (const e of state.enemies) e.draw();
+
+  // Player
+  state.player.draw();
+
+  // Explosions
+  for (const ex of state.explosions) {
+    const f = ex.frame;
+    if (f < SPR.explosion.length) {
+      const s = SPR.explosion[f];
+      ctx.drawImage(s, Math.round(ex.x - s.width / 2), Math.round(ex.y - s.height / 2));
+    }
+  }
+
+  // Game Over text overlay
+  if (state.mode === 'gameover') {
+    ctx.fillStyle = '#ff2222';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', LW / 2, LH / 2);
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#ffff00';
+    ctx.fillText(`SCORE: ${state.score}`, LW / 2, LH / 2 + 14);
+  }
+}
+
+// ============================================================
+// Game over
+// ============================================================
+
+let gameOverTimer = 0;
+function gameOver() {
+  if (state.mode === 'gameover') return;
+  state.mode = 'gameover';
+  if (state.score > parseInt(localStorage.getItem('galaga_hi') || '0', 10)) {
+    localStorage.setItem('galaga_hi', state.score);
+  }
+  setTimeout(() => {
+    document.getElementById('overlay').classList.remove('hidden');
+    document.querySelector('#overlay h2').textContent = `GAME OVER - SCORE: ${state.score}`;
+    document.getElementById('start-btn').textContent = 'PLAY AGAIN';
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('lives').classList.add('hidden');
+    document.getElementById('fire-btn').classList.add('hidden');
+    document.getElementById('pause-btn').classList.add('hidden');
+  }, 1500);
+}
+
+// ============================================================
+// Input
+// ============================================================
+
+const input = {
+  pointerActive: false,
+  pointerX: 0,
+  fireDown: false,
+  autoFire: false,
+};
+
+function canvasPointerToGame(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (clientX - rect.left) / rect.width * LW;
+  const y = (clientY - rect.top) / rect.height * LH;
+  return { x, y };
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state.mode !== 'playing') return;
+  for (const t of e.changedTouches) {
+    const p = canvasPointerToGame(t.clientX, t.clientY);
+    state.player.targetX = p.x;
+    input.pointerActive = true;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (state.mode !== 'playing') return;
+  for (const t of e.changedTouches) {
+    const p = canvasPointerToGame(t.clientX, t.clientY);
+    state.player.targetX = p.x;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  input.pointerActive = false;
+}, { passive: false });
+
+// Mouse for desktop testing
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e) => {
+  if (state.mode !== 'playing') return;
+  mouseDown = true;
+  const p = canvasPointerToGame(e.clientX, e.clientY);
+  state.player.targetX = p.x;
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown || state.mode !== 'playing') return;
+  const p = canvasPointerToGame(e.clientX, e.clientY);
+  state.player.targetX = p.x;
+});
+canvas.addEventListener('mouseup', () => { mouseDown = false; });
+
+// Keyboard for desktop
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (e.key === ' ' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (state.mode === 'playing') state.player.shoot();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  keys[e.key] = false;
+});
+
+// Continuous keyboard movement
+setInterval(() => {
+  if (state.mode !== 'playing') return;
+  if (keys['ArrowLeft']) state.player.targetX -= 4;
+  if (keys['ArrowRight']) state.player.targetX += 4;
+}, 16);
+
+// Fire button
+const fireBtn = document.getElementById('fire-btn');
+let fireInterval = null;
+function startFire() {
+  if (state.mode !== 'playing') return;
+  state.player.shoot();
+  if (fireInterval) clearInterval(fireInterval);
+  fireInterval = setInterval(() => {
+    if (state.mode === 'playing') state.player.shoot();
+  }, 180);
+}
+function stopFire() {
+  if (fireInterval) { clearInterval(fireInterval); fireInterval = null; }
+}
+fireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startFire(); }, { passive: false });
+fireBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopFire(); }, { passive: false });
+fireBtn.addEventListener('mousedown', startFire);
+fireBtn.addEventListener('mouseup', stopFire);
+fireBtn.addEventListener('mouseleave', stopFire);
+
+// Auto-fire toggle: tap upper portion of screen to fire even without button
+canvas.addEventListener('touchstart', (e) => {
+  if (state.mode !== 'playing') return;
+  for (const t of e.changedTouches) {
+    const p = canvasPointerToGame(t.clientX, t.clientY);
+    if (p.y < LH * 0.6) {
+      state.player.shoot();
+    }
+  }
+}, { passive: false });
+
+// Pause button
+const pauseBtn = document.getElementById('pause-btn');
+pauseBtn.addEventListener('click', () => {
+  if (state.mode === 'playing') {
+    state.mode = 'paused';
+    pauseBtn.textContent = '▶';
+  } else if (state.mode === 'paused') {
+    state.mode = 'playing';
+    pauseBtn.textContent = 'II';
+  }
+});
+
+// ============================================================
+// Start / Init
+// ============================================================
+
+function startGame() {
+  state.score = 0;
+  state.lives = 3;
+  state.stage = 1;
+  state.player = new Player();
+  state.bullets = [];
+  state.enemyBullets = [];
+  state.enemies = [];
+  state.explosions = [];
+  state.mode = 'playing';
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('lives').classList.remove('hidden');
+  document.getElementById('fire-btn').classList.remove('hidden');
+  document.getElementById('pause-btn').classList.remove('hidden');
+  startStage(1);
+  updateHUD();
+
+  // Auto-fire continuously for arcade feel (optional - controlled via button)
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  startGame();
+});
+document.getElementById('start-btn').addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  startGame();
+}, { passive: false });
+
+// PWA: register service worker for offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((err) => {
+      console.log('SW registration failed:', err);
+    });
+  });
+}
+
+// Init
+resize();
+updateHUD();
+requestAnimationFrame(gameLoop);
+
+// Auto-shoot for arcade flavor: hold-to-fire only via button
+// Player can also tap upper part of canvas to shoot
+
+</script>
+</body>
+</html>
